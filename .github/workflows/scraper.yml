@@ -35,7 +35,7 @@ jobs:
         run: |
           git config --global user.email "andy.chen0607@gmail.com"
           git config --global user.name "andychen482"
-          git remote set-url origin https://${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/andychen482/UF-Scheduler-Backend.git
+          git remote set-url origin https://${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/andychen482/UF-Scheduler-Backend-New.git
 
       - name: Commit and conditionally amend previous commit
         run: |
