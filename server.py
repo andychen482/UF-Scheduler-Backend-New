@@ -114,10 +114,18 @@ def init_db_for_file(json_path):
     local_course_map = {}
     local_dept_map = {}
     for course in all_courses:
-        local_course_map[course['code']] = course
+        code = course['code']
+        
+        # Initialize the list if the code is not already in the map
+        if code not in local_course_map:
+            local_course_map[code] = []
+        
+        # Append the course to the list of courses for this code
+        local_course_map[code].append(course)
+        
         sections = course.get('sections', [])
         dept_name = sections[0].get("deptName", "") if sections else ""
-        local_dept_map[course['code']] = dept_name
+        local_dept_map[code] = dept_name
 
     course_data_map[(year, term)] = local_course_map
     course_dept_map[(year, term)] = local_dept_map
@@ -177,7 +185,7 @@ def get_courses():
             instructors,
             bm25(courses_fts) AS rank,
             CASE 
-                WHEN codeWithSpace = :exactSearch THEN 0 
+                WHEN codeWithSpace = :exactSearch or code = :exactSearch THEN 0 
                 ELSE 1 
             END AS top_sort
         FROM courses_fts
@@ -197,8 +205,10 @@ def get_courses():
     results = []
     for row in rows:
         code = row['code']
-        course_obj = codes_dict.get(code, {})
-        results.append(course_obj)
+        # Retrieve the list of courses for the code
+        courses_list = codes_dict.get(code, [])
+        # Extend the results with all courses for this code
+        results.extend(courses_list)
 
     conn.close()
     return jsonify(results)
@@ -272,5 +282,5 @@ def initiateList(G, selected_major, year, term):
 # -------------------------------------------------------------------
 # 6. Optional: run the app
 # -------------------------------------------------------------------
-if __name__ == '__main__':
-    app.run(debug=True)
+# if __name__ == '__main__':
+#     app.run(debug=True)
