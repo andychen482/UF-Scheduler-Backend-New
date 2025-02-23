@@ -225,7 +225,7 @@ if __name__ == '__main__':
             sys.exit(1)
 
         # Delete existing JSON files for the current term and year
-        current_files = glob.glob(os.path.join(courses_dir, f'*_{year}_{term}.json'))
+        current_files = glob.glob(os.path.join(courses_dir, f'*_{year}_{term}_final.json'))
         for file in current_files:
             try:
                 os.remove(file)
