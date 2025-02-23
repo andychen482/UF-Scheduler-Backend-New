@@ -23,8 +23,11 @@ CORS(app, origins=[
 # -------------------------------------------------------------------
 
 json_files = glob.glob('courses/*_final.json')
-course_data_map = {}  # Dictionary keyed by (year, term) -> {code -> course}
-course_dept_map = {}  # Dictionary keyed by (year, term) -> {code -> deptName}
+
+# Instead, add a new global dictionary to hold all pre-built graphs:
+major_graph_map = {}  # {(year, term): {departmentName: nx.DiGraph}}
+
+# Keep the parse_year_term_from_filename, get_connection, etc. as they are...
 
 def parse_year_term_from_filename(filename):
     """
@@ -55,13 +58,15 @@ def get_connection(db_name):
     """
     return sqlite3.connect(db_name)
 
+# Create a new in-memory structure to store all courses by (year, term):
+year_term_course_list = {}  # {(year, term): [courses...]}
+
 def init_db_for_file(json_path):
     """
     - Parses (year, term) from json_path
     - Creates a DB named 'courses_{year}_{term}.db'
     - Initializes the FTS table (with prefix) if needed
     - Inserts all courses specific to that file
-    - Populates course_data_map[(year, term)] and course_dept_map[(year, term)]
     """
     year, term = parse_year_term_from_filename(json_path)
     db_name = f'courses_{year}_{term}.db'
@@ -82,6 +87,7 @@ def init_db_for_file(json_path):
             description,
             prerequisites,
             instructors,
+            json_data UNINDEXED,
             prefix='2 3 4'
         )
     ''')
@@ -101,38 +107,80 @@ def init_db_for_file(json_path):
                     instructor_names.append(inst.get('name', ''))
             instructors_joined = ' '.join(instructor_names)
 
+            # Store the entire course JSON
+            json_str = json.dumps(course)
+
             cur.execute('''
-                INSERT INTO courses_fts (code, codeWithSpace, name, description, prerequisites, instructors)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (code, codeWithSpace, name, description, prerequisites, instructors_joined))
+                INSERT INTO courses_fts (
+                    code, codeWithSpace, name, description, 
+                    prerequisites, instructors, json_data
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (code, codeWithSpace, name, description, 
+                  prerequisites, instructors_joined, json_str))
 
         conn.commit()
 
     conn.close()
 
-    # Build the code->course map and code->deptName map
-    local_course_map = {}
-    local_dept_map = {}
-    for course in all_courses:
-        code = course['code']
-        
-        # Initialize the list if the code is not already in the map
-        if code not in local_course_map:
-            local_course_map[code] = []
-        
-        # Append the course to the list of courses for this code
-        local_course_map[code].append(course)
-        
-        sections = course.get('sections', [])
-        dept_name = sections[0].get("deptName", "") if sections else ""
-        local_dept_map[code] = dept_name
-
-    course_data_map[(year, term)] = local_course_map
-    course_dept_map[(year, term)] = local_dept_map
+    # Instead of storing course_data_map and course_dept_map,
+    # keep a list of all courses for this (year, term):
+    year_term_course_list[(year, term)] = all_courses
 
 # Initialize a DB for each final JSON on startup
 for jpath in json_files:
     init_db_for_file(jpath)
+
+def clean_prereq(prerequisites):
+    pattern = r'[A-Z]{3}\s\d{4}'
+    return re.findall(pattern, prerequisites)
+
+def format_course_code(course):
+    return course[:3] + '\n' + course[3:]
+
+def build_graph_for_all_majors(all_courses):
+    """
+    Return a dict: { major: nx.DiGraph }, where each graph includes edges
+    based on prerequisites among courses in the same major (deptName).
+    """
+    # Build a quick dept map: code -> deptName
+    code_dept_map = {}
+    # Also store prerequisites for each course code:
+    code_prereq_map = {}
+    for course in all_courses:
+        code = course['code']
+        sections = course.get('sections', [])
+        dept_name = sections[0].get("deptName", "") if sections else ""
+        code_dept_map[code] = dept_name
+        code_prereq_map[code] = course.get("prerequisites", "")
+
+    # Group courses by department name (major):
+    major_courses_map = {}
+    for code, dept in code_dept_map.items():
+        major_courses_map.setdefault(dept, []).append(code)
+
+    # Now build a graph for each department
+    graphs_for_majors = {}
+    for dept, codes in major_courses_map.items():
+        G = nx.DiGraph()
+        # For each course in this dept, parse its prereqs, add edges
+        for code in codes:
+            prereq_list = clean_prereq(code_prereq_map[code])
+            course_fmt = format_course_code(code.rstrip('ABCDEFGHIJKLMNOPQRSTUVWXYZ '))
+            for prereq in prereq_list:
+                pre_fmt = format_course_code(prereq.replace(" ", "").rstrip(' '))
+                if course_fmt != pre_fmt:
+                    G.add_edge(pre_fmt, course_fmt)
+        graphs_for_majors[dept] = G
+
+    return graphs_for_majors
+
+# Build all major graphs for each (year, term) and store in major_graph_map
+for (year, term), all_courses in year_term_course_list.items():
+    major_graph_map[(year, term)] = build_graph_for_all_majors(all_courses)
+
+# We can discard the raw course lists now that graphs are built
+del year_term_course_list
 
 # -------------------------------------------------------------------
 # 3. Modify the /api/get_courses route to accept year and term,
@@ -156,19 +204,17 @@ def get_courses():
     year = data.get('year')
     term = data.get('term')
 
-    # Validate year/term
     if not year or not term:
         return jsonify({"error": "Missing 'year' or 'term' in request body"}), 400
 
     db_name = f'courses_{year}_{term}.db'
-    # Look up the relevant code->course dictionary
-    codes_dict = course_data_map.get((year, term), {})
 
     if not searchTerm:
         return jsonify([])
 
+    # For prefix matching in FTS
     terms = searchTerm.split()
-    prefix_terms = [term + '*' for term in terms]
+    prefix_terms = [t + '*' for t in terms]
     fts_query = ' '.join(prefix_terms)
 
     conn = get_connection(db_name)
@@ -177,15 +223,10 @@ def get_courses():
 
     query = '''
         SELECT
-            code,
-            codeWithSpace,
-            name,
-            description,
-            prerequisites,
-            instructors,
+            json_data,
             bm25(courses_fts) AS rank,
             CASE 
-                WHEN codeWithSpace = :exactSearch or code = :exactSearch THEN 0 
+                WHEN codeWithSpace = :exactSearch OR code = :exactSearch THEN 0 
                 ELSE 1 
             END AS top_sort
         FROM courses_fts
@@ -204,11 +245,10 @@ def get_courses():
 
     results = []
     for row in rows:
-        code = row['code']
-        # Retrieve the list of courses for the code
-        courses_list = codes_dict.get(code, [])
-        # Extend the results with all courses for this code
-        results.extend(courses_list)
+        # Each row corresponds to one specific entry
+        course_json = row['json_data']
+        course = json.loads(course_json)
+        results.append(course)
 
     conn.close()
     return jsonify(results)
@@ -226,61 +266,40 @@ def generate_a_list():
     year = data.get('year')
     term = data.get('term')
 
+    # Format the taken courses:
     formatted_taken_courses = [
         format_course_code(course.rstrip('ABCDEFGHIJKLMNOPQRSTUVWXYZ '))
         for course in taken_courses
     ]
 
-    # Add each taken course as a node
+    # Retrieve the pre-built graph. If we don't have that major, use empty graph.
+    major_graphs = major_graph_map.get((year, term), {})
+    base_graph = major_graphs.get(selected_major, nx.DiGraph())
+    # Make a copy so we don't mutate our global graph:
+    G = base_graph.copy()
+
+    # Now each taken course is guaranteed to be in the final node set
+    # (existing logic to highlight or 'select' them):
     for course in formatted_taken_courses:
         G.add_node(course)
 
-    initiateList(G, selected_major, year, term)
-
+    # Build the final node/edge lists including 'selected' class:
     nodes = [
-        {"data": {"id": node}, "classes": "selected" if node in formatted_taken_courses else "not_selected"}
+        {
+            "data": {"id": node},
+            "classes": "selected" if node in formatted_taken_courses else "not_selected"
+        }
         for node in G.nodes()
     ]
-    edges = [{"data": {"source": edge[0], "target": edge[1]}} for edge in G.edges()]
+    edges = [{"data": {"source": e[0], "target": e[1]}} for e in G.edges()]
 
     return jsonify({
         'nodes': nodes,
         'edges': edges
     })
 
-def clean_prereq(prerequisites):
-    pattern = r'[A-Z]{3}\s\d{4}'
-    return re.findall(pattern, prerequisites)
-
-def format_course_code(course):
-    return course[:3] + '\n' + course[3:]
-
-def initiateList(G, selected_major, year, term):
-    if not selected_major:
-        return
-
-    # Access the correct course_dept_map and course_data_map for the given year and term
-    dept_map = course_dept_map.get((year, term), {})
-    course_map = course_data_map.get((year, term), {})
-
-    # Filter courses by department name
-    relevant_courses = {
-        code for code, dept in dept_map.items()
-        if selected_major in dept
-    }
-
-    for course_code in relevant_courses:
-        course = course_map.get(course_code, {})
-        prereq_list = clean_prereq(course.get("prerequisites", ""))
-
-        course_code_formatted = format_course_code(course_code.rstrip('ABCDEFGHIJKLMNOPQRSTUVWXYZ '))
-        for prereq in prereq_list:
-            prereq_formatted = format_course_code(prereq.replace(" ", "").rstrip(' '))
-            if course_code_formatted != prereq_formatted:
-                G.add_edge(prereq_formatted, course_code_formatted)
-
 # -------------------------------------------------------------------
 # 6. Optional: run the app
 # -------------------------------------------------------------------
-# if __name__ == '__main__':
-#     app.run(debug=True)
+if __name__ == '__main__':
+    app.run(debug=True)
