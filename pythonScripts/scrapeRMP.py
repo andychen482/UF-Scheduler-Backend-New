@@ -2,6 +2,7 @@ import requests
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+import time
 import glob
 import os
 
@@ -158,10 +159,14 @@ def fetch_professor_data(prof):
   else:
       print(f"Failed to fetch data for professor {prof}, status code: {response.status_code}")
       return None
-
   # Using a lock to prevent simultaneous writes to the shared dictionary
   with lock:
       professor_data.update(local_data)
+
+  # If we successfully found data for this professor, enforce a 1-second
+  # spacing between successful requests to avoid hammering the API.
+  if prof in local_data:
+      time.sleep(0.5)
 
 with ThreadPoolExecutor(max_workers=16) as executor:
     futures = [executor.submit(fetch_professor_data, prof) for prof in professor]
