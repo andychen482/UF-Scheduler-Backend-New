@@ -8358,5 +8358,70 @@
         "avgRating": 3.4000000000000004,
         "avgDifficulty": 4.0,
         "professorID": "2511611"
+    },
+    "Ifigeneia Giannadaki": {
+        "avgRating": 3.2,
+        "avgDifficulty": 2.5,
+        "professorID": 2565073
+    },
+    "John Palmer": {
+        "avgRating": 2.8000000000000003,
+        "avgDifficulty": 3.7,
+        "professorID": 264039
+    },
+    "David Sappington": {
+        "avgRating": 5,
+        "avgDifficulty": 3.2,
+        "professorID": 2476282
+    },
+    "Jorg Peters": {
+        "avgRating": 2.5,
+        "avgDifficulty": 3.8000000000000003,
+        "professorID": 1104738
+    },
+    "Nicholas Kerr": {
+        "avgRating": 4.800000000000001,
+        "avgDifficulty": 2.5,
+        "professorID": 2741658
+    },
+    "Bradley Wilkes": {
+        "avgRating": 5,
+        "avgDifficulty": 1,
+        "professorID": 2003084
+    },
+    "David Canton": {
+        "avgRating": 3.6,
+        "avgDifficulty": 3.2,
+        "professorID": 2731708
+    },
+    "yang yang": {
+        "avgRating": 5,
+        "avgDifficulty": 2.5,
+        "professorID": 2704217
+    },
+    "Mary Watt": {
+        "avgRating": 4.9,
+        "avgDifficulty": 2.8000000000000003,
+        "professorID": 344222
+    },
+    "Yong Huang": {
+        "avgRating": 3.6,
+        "avgDifficulty": 3.8000000000000003,
+        "professorID": 1867739
+    },
+    "Daniel Savin": {
+        "avgRating": 3.5,
+        "avgDifficulty": 3.5,
+        "professorID": 2217898
+    },
+    "Meera Sitharam": {
+        "avgRating": 3.8000000000000003,
+        "avgDifficulty": 4.1000000000000005,
+        "professorID": 898570
+    },
+    "Anand Rangarajan": {
+        "avgRating": 3.5,
+        "avgDifficulty": 4.5,
+        "professorID": 2055576
     }
 }

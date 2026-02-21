@@ -85,7 +85,6 @@ def init_db_for_file(json_path):
             codeWithSpace,
             name,
             description,
-            prerequisites,
             instructors,
             json_data UNINDEXED,
             prefix='2 3 4'
@@ -99,7 +98,6 @@ def init_db_for_file(json_path):
             codeWithSpace = course.get('codeWithSpace', '')
             name = course.get('name', '')
             description = course.get('description', '')
-            prerequisites = course.get('prerequisites', '')
 
             instructor_names = []
             for section in course.get('sections', []):
@@ -113,11 +111,11 @@ def init_db_for_file(json_path):
             cur.execute('''
                 INSERT INTO courses_fts (
                     code, codeWithSpace, name, description, 
-                    prerequisites, instructors, json_data
+                    instructors, json_data
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?)
             ''', (code, codeWithSpace, name, description, 
-                  prerequisites, instructors_joined, json_str))
+                  instructors_joined, json_str))
 
         conn.commit()
 
