@@ -236,7 +236,7 @@ if __name__ == '__main__':
         term_dict = {'spring': '1', 'summer': '5', 'fall': '8'}
         term_num = str(2) + str(year) + term_dict[term]
 
-        url = f'https://one.ufl.edu/apix/soc/schedule/?category=RES&term={term_num}&last-control-number='
+        url = f'https://one.uf.edu/apix/soc/schedule/?category=RES&term={term_num}&last-control-number='
         threads = []
         for i in range(16):  # Create 16 threads
             t = threading.Thread(target=thread_handler, args=(i, 50 * i, url, term, year))
