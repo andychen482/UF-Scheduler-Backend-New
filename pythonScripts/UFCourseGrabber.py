@@ -31,9 +31,14 @@ class Counter:
 
 counter = Counter()
 
+COOKIES = {
+    "ONEUF_SESSION": "s%3Ak9Hwp66fOP4yeZRMknJ2H70IHnnvZLp_.Jwkk9h80xiNrnpdVWdYN2LVl6MGYy%2BduFN3J9Vc5kT8",
+    "_shibsession_68747470733a2f2f73702e6c6f67696e2e75666c2e6564752f75726e3a6564753a75666c3a70726f643a30303734312f68747470733a2f2f73702e6c6f67696e2e75666c2e6564752f75726e3a6564753a75666c3a70726f643a30303734312f": "_9c096e1da3a90c6b5c006d5f59274273",
+}
+
 def scrape_page(url):
     try:
-        response = requests.get(url)
+        response = requests.get(url, cookies=COOKIES)
         response.raise_for_status()  # Raises stored HTTPError, if one occurred.
     except requests.HTTPError as http_err:
         logging.error(f'HTTP error occurred: {http_err}')
