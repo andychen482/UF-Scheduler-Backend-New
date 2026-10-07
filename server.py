@@ -9,13 +9,12 @@ import gc
 import os
 
 app = Flask(__name__)
-CORS(app, origins=[
-    'http://ufscheduler.com',
-    'https://ufscheduler.com',
-    'http://www.ufscheduler.com',
-    'https://www.ufscheduler.com',
-    'http://localhost:3000'
-])
+# Comma-separated list of sites allowed to call this API; override with ALLOWED_ORIGINS
+ALLOWED_ORIGINS = os.environ.get(
+    'ALLOWED_ORIGINS',
+    'https://ufscheduler.jackie-courtney.com,http://localhost:3000'
+).split(',')
+CORS(app, origins=[origin.strip() for origin in ALLOWED_ORIGINS if origin.strip()])
 
 # -------------------------------------------------------------------
 # 1. Locate and load all course JSON files corresponding to (_{year}_{term}_final.json)
@@ -205,15 +204,23 @@ def get_courses():
     if not year or not term:
         return jsonify({"error": "Missing 'year' or 'term' in request body"}), 400
 
+    # Only terms with scraped data have a database; anything else has no results
+    if (year, term) not in major_graph_map:
+        return jsonify([])
+
     db_name = f'courses_{year}_{term}.db'
 
     if not searchTerm:
         return jsonify([])
 
-    # For prefix matching in FTS
-    terms = searchTerm.split()
-    prefix_terms = [t + '*' for t in terms]
+    # For prefix matching in FTS. Keep only alphanumeric tokens and quote them so
+    # punctuation ("C++", "COP-3502") and FTS keywords (AND, OR, NOT) can't break the query.
+    terms = re.findall(r'[A-Za-z0-9]+', searchTerm)
+    if not terms:
+        return jsonify([])
+    prefix_terms = [f'"{t}"*' for t in terms]
     fts_query = ' '.join(prefix_terms)
+    exact_code = ''.join(terms).upper()
 
     conn = get_connection(db_name)
     conn.row_factory = sqlite3.Row
@@ -222,9 +229,10 @@ def get_courses():
     query = '''
         SELECT
             json_data,
-            bm25(courses_fts) AS rank,
+            -- weight code and title matches above description / instructor matches
+            bm25(courses_fts, 10.0, 10.0, 6.0, 1.0, 2.0) AS rank,
             CASE 
-                WHEN codeWithSpace = :exactSearch OR code = :exactSearch THEN 0 
+                WHEN upper(code) = :exactSearch THEN 0 
                 ELSE 1 
             END AS top_sort
         FROM courses_fts
@@ -235,7 +243,7 @@ def get_courses():
     '''
 
     rows = cur.execute(query, {
-        'exactSearch': searchTerm,
+        'exactSearch': exact_code,
         'ftsQuery': fts_query,
         'limit': itemsPerPage,
         'offset': startFrom
